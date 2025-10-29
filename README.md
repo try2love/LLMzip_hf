@@ -1,8 +1,10 @@
 原始LLMzip仓库链接：[vcskaushik/LLMzip](https://github.com/vcskaushik/LLMzip)
 
+项目是对文本数据使用LLM进行压缩，文本压缩的效果与文本的质量、LLM对文本的语义理解程度高度相关。本质上就是文本在LLM的PPL越低，压缩效果越好。
+
 本仓库是在原始仓库的基础上添加了适配huggingface版本llama模型的功能，运行方案和原始仓库一致
 
-额外添加了一些评估指标的计算，使得更加完善
+额外添加了一些评估指标的计算，使得更加完善；额外添加了每一步下一个token预测的csv表和json汇总，直观展示下一个token的概率。
 
 为什么要适配huggingface版本？因为[hiyouga/LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory)对模型的微调是以hf版本为基础的，先把hf版本适配可以进一步尝试适配微调版本结果
 

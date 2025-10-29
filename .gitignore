@@ -1,1 +1,4 @@
-.vscode
+.vscode/
+get_middle_results.ipynb
+arithmetic_decoding_raw_results.csv
+arithmetic_decoding_raw_results.json
