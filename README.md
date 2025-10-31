@@ -33,6 +33,9 @@
 - **tokenizer_path**: `str`
   - 分词器模型路径
 
+- **lora_dir**: `str`
+  - lora权重路径
+
 ## 文本处理参数
 
 - **win_len**: `int`
