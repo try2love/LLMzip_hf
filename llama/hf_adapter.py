@@ -1,5 +1,5 @@
 from typing import Optional
-import os
+from peft import PeftModel
 import torch
 
 try:
@@ -10,12 +10,21 @@ except Exception as e:
     ) from e
 
 class HFTransformerAdapter(torch.nn.Module):
-    def __init__(self, hf_model_dir: str, device=None):
+    def __init__(self, hf_model_dir: str, lora_dir: str = None, device=None):
         super().__init__()
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model = LlamaForCausalLM.from_pretrained(
-            hf_model_dir, torch_dtype=torch.float16, device_map="auto"
-        ).eval()
+            hf_model_dir,
+            torch_dtype=torch.float16 if "cuda" in self.device else torch.float32,
+            device_map="auto"
+        )
+        # Lora权重
+        if lora_dir is not None:
+            print(f"加载Lora权重，源：{lora_dir}")
+            self.model = PeftModel.from_pretrained(self.model, lora_dir)
+            self.model.merge_and_unload()
+
+        self.model.eval()
         self.vocab_size = self.model.config.vocab_size
 
     @torch.no_grad()

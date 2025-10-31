@@ -3,6 +3,7 @@ TEXT_FILE="test_texts/long_text.txt"
 COMPRESSION_FOLDER="test_texts"
 COMPRESSED_FILE_NAME="test_texts/long_text_511"
 TARGET_FOLDER="meta-llama/Llama-2-7b-hf"
+LORA_FOLDER=""
 
 mkdir -p $COMPRESSION_FOLDER
 
@@ -17,6 +18,7 @@ CUDA_VISIBLE_DEVICES=1 python LLMzip_run_hf.py \
   --compressed_file_name $COMPRESSED_FILE_NAME \
   --compression_alg ArithmeticCoding \
   --encode_decode 2 \
-  --self_calculate_p True
+  --self_calculate_p True \
+  --lora_dir $LORA_FOLDER
 
 echo "完成！结果保存在: $COMPRESSION_FOLDER"s

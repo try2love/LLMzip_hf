@@ -2,3 +2,6 @@
 get_middle_results.ipynb
 arithmetic_decoding_raw_results.csv
 arithmetic_decoding_raw_results.json
+test_llmzip_hf.sh
+test_texts/
+llama/__pycache__/

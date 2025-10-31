@@ -54,7 +54,7 @@ def load(
     world_size: int,
     max_seq_len: int,
     max_batch_size: int,
-    use_hf: bool
+    lora_dir: str = None,
 ):
     start_time = time.time()
     # If the checkpoint directory looks like a HuggingFace model (config.json exists),
@@ -72,14 +72,13 @@ def load(
 
         print("Detected HuggingFace-format model in ckpt_dir. Using HF adapter to load model.")
 
-        model_adapter = HFTransformerAdapter(hf_model_dir=ckpt_dir)
+        model_adapter = HFTransformerAdapter(hf_model_dir=ckpt_dir,lora_dir=lora_dir)
         # expose attribute expected by LLMzip (vocab_size)
         # model_adapter.vocab_size is already set in adapter
         Encoder = LLMzip_encode(model_adapter, tokenizer,True)
         Decoder = LLMzip_decode(model_adapter, tokenizer,True)
         print(f"Loaded HF model in {time.time() - start_time:.2f} seconds")
         return Encoder, Decoder, True
-    use_hf = False
 
     tokenizer = Tokenizer(model_path=tokenizer_path)
     checkpoints = sorted(Path(ckpt_dir).glob("*.pth"))
@@ -186,6 +185,7 @@ def main(
     verify_save_decoded: int = 2,
     with_context_start: bool = False,
     self_calculate_p: bool = False,
+    lora_dir: str = None
 ):
 
     # win_len - The context window length and it cannot exceed the max seq length 512 上下文长度
@@ -216,7 +216,7 @@ def main(
     if decode:
         batched_encode = False
     use_hf = True
-    Encoder,Decoder,use_hf = load(ckpt_dir, tokenizer_path, local_rank, world_size, max_seq_len, max_batch_size,use_hf)
+    Encoder,Decoder,use_hf = load(ckpt_dir, tokenizer_path, local_rank, world_size, max_seq_len, max_batch_size, lora_dir)
 
     os.makedirs(compression_folder,exist_ok=True)
     # compressed_file_name = compression_folder + f'/LLMzip_{win_len}' 
