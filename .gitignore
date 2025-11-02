@@ -5,3 +5,9 @@ arithmetic_decoding_raw_results.json
 test_llmzip_hf.sh
 test_texts/
 llama/__pycache__/
+.gitignore
+LLMzip_json_compression
+run_json.sh
+LLMzip_run_json.py
+compression_results.json
+__pycache__/

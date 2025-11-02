@@ -7,11 +7,9 @@ import time
 import json
 import numpy as np
 from pathlib import Path
-
 from fairscale.nn.model_parallel.initialize import initialize_model_parallel
-
 from llama import ModelArgs, Transformer, Tokenizer, LLMzip_encode, LLMzip_decode
-
+from llama.llmzip_utils import parse_win_nt_from_filename
 ### Command to run
 # torchrun --nproc_per_node 1 LLMzip_run.py --ckpt_dir weights/7B --tokenizer_path weights/tokenizer.model
 # --win_len 511 --text_file *.txt --compression_folder LLMzip_compression   > Log_files/text8_ent1.txt 2>&1
@@ -250,12 +248,13 @@ def main(
         # - tokens_full: 完整token序列
         # - batched_encode: 是否使用批处理编码
         # - with_context_start: 是否包含上下文起始标记
-        Encoder.encode_from_tokens(win_len,compression_alg,compressed_file_name,tokens_full=tokens_full,batched_encode=batched_encode,with_context_start=with_context_start)
-
+        Encoder.encode_from_tokens(win_len,compression_alg,compressed_file_name,tokens_full=tokens_full,batched_encode=batched_encode,with_context_start=with_context_start,out_dir=compression_folder)
+    # 解码逻辑变更为关键参数从pkl文件中读取
     if decode:
-        with open(compressed_file_name+'_metrics.json') as metrics_file:
-            total_length = json.load(metrics_file)['$N_T$'][0] #Load number of tokens from compression metrics for arithmetic coding length
-        
+        # with open(compressed_file_name+'_metrics.json') as metrics_file:
+            # total_length = json.load(metrics_file)['$N_T$'][0] #Load number of tokens from compression metrics for arithmetic coding length
+        compressed_file_name_full = next((p for p in Path().rglob(f"{compressed_file_name}*.pkl") if p.is_file()), None)
+        win_len, total_length = parse_win_nt_from_filename(compressed_file_name_full)
         if with_context_start:
             starter_tokens = np.load(compressed_file_name+'_starter_tokens.npy')
             context_txt = Encoder.tokenizer.decode(starter_tokens.tolist())
@@ -264,14 +263,14 @@ def main(
             context_txt = None
 
         if (compression_alg == 'ArithmeticCoding')or(compression_alg =='both'): 
-            compressed_file_name_full = compressed_file_name+'_AC.txt'
+            # compressed_file_name_full = compressed_file_name+'_AC.txt'
             
-            decoded_text_ac = Decoder.decode_AC(win_len,starter_tokens,total_length, compressed_file_name_full)
+            decoded_text_ac = Decoder.decode_AC(win_len,starter_tokens,total_length, compressed_file_name_full, save_raw_results=False)
             if verify_save_decoded > 0:
                 verify_text(compressed_file_name,text_file,decoded_text_ac,context_txt,verify_save_decoded==2,'ArithmeticCoding')
             
         if (compression_alg == 'RankZip')or(compression_alg =='both'): 
-            compressed_file_name_full = compressed_file_name+'_RZ.txt'
+            # compressed_file_name_full = compressed_file_name+'_RZ.txt'
             decompressed_file_name = compressed_file_name+'_RZ'
 
             decoded_text_rz = Decoder.decode_ranks(win_len,starter_tokens, compressed_file_name_full)
@@ -281,10 +280,10 @@ def main(
     print(f"Completed in {time.time() - start_time_main:.2f} seconds")
     if self_calculate_p:
         # Determine the actual compressed file name
-        if compression_alg == 'ArithmeticCoding' or compression_alg == 'both':
-            compressed_file_path = f"{compressed_file_name}_AC.txt"
-        if (compression_alg == 'RankZip')or(compression_alg =='both'):
-            compressed_file_path = f"{compressed_file_name}_RZ.txt"
+        # if compression_alg == 'ArithmeticCoding' or compression_alg == 'both':
+        #     compressed_file_path = f"{compressed_file_name}_AC.txt"
+        # if (compression_alg == 'RankZip')or(compression_alg =='both'):
+        #     compressed_file_path = f"{compressed_file_name}_RZ.txt"
         
         # Get the decoded text
         if compression_alg == 'ArithmeticCoding' or compression_alg == 'both':
@@ -295,8 +294,9 @@ def main(
                 decoded_text = dec_f.read()
         
         # Calculate metrics
-        p1 = calculate_compression_ratio(text_file, compressed_file_path)
+        p1 = calculate_compression_ratio(text_file, compressed_file_name_full)
         p2 = calculate_recovery_rate(text_input, decoded_text)
         print(f"语义压缩比：{p1}\n信息恢复率：{p2}")
+        return p1,p2
 if __name__ == "__main__":
     fire.Fire(main)

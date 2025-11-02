@@ -21,4 +21,4 @@ CUDA_VISIBLE_DEVICES=1 python LLMzip_run_hf.py \
   --self_calculate_p True \
   --lora_dir $LORA_FOLDER
 
-echo "完成！结果保存在: $COMPRESSION_FOLDER"s
+echo "完成！结果保存在: $COMPRESSION_FOLDER"

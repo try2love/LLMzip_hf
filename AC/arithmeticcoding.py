@@ -49,15 +49,15 @@ class ArithmeticCoderBase(object):
         self.low = 0
         # High end of this arithmetic coder's current range. Conceptually has an infinite number of trailing 1s.
         self.high = self.MASK
-        print("STATE_SIZE  : ",self.STATE_SIZE)
-        print("MAX_RANGE   : ",bin(self.MAX_RANGE))
-        print("MIN_RANGE   : ",bin(self.MIN_RANGE))
-        print("MAX_TOTAL   : ",bin(self.MAX_TOTAL))
-        print("MASK        : ",bin(self.MASK))
-        print("TOP_MASK    : ",bin(self.TOP_MASK))
-        print("SECOND_MASK : ",bin(self.SECOND_MASK))
-        print("low         : ",bin(self.low))
-        print("high        : ",bin(self.high))
+        # print("STATE_SIZE  : ",self.STATE_SIZE)
+        # print("MAX_RANGE   : ",bin(self.MAX_RANGE))
+        # print("MIN_RANGE   : ",bin(self.MIN_RANGE))
+        # print("MAX_TOTAL   : ",bin(self.MAX_TOTAL))
+        # print("MASK        : ",bin(self.MASK))
+        # print("TOP_MASK    : ",bin(self.TOP_MASK))
+        # print("SECOND_MASK : ",bin(self.SECOND_MASK))
+        # print("low         : ",bin(self.low))
+        # print("high        : ",bin(self.high))
 
 
     # Updates the code range (low and high) of this arithmetic coder as a result

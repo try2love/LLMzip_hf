@@ -1,10 +1,6 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# This software may be used and distributed according to the terms of the GNU General Public License version 3.
-
 from typing import List
-
+import pickle, io, os
 import torch
-
 from llama.tokenizer import Tokenizer
 from llama.model import Transformer
 from llama.llmzip_utils import *
@@ -15,7 +11,7 @@ import zlib
 import sys
 import binascii
 import json
-
+from llama.llmzip_utils import build_compressed_pkl_name
 
 class LLMzip_encode:
     def __init__(self, model: Transformer, tokenizer: Tokenizer, use_hf: bool):
@@ -72,32 +68,38 @@ class LLMzip_encode:
         compressed_file_name: str = 'LLMzip',
         tokens_full = None,
         batched_encode = False,
-        with_context_start=False):
-        
+        with_context_start=False,
+        out_dir: str = None):
+        self.win_size = win_size
         self.compression_alg = compression_alg
         self.compressed_file_name = compressed_file_name
         # self.with_context_start
         # 额外+1用于传递目标token
         win_size_enc = win_size + 1 # additional 1 is to pass the true token apart from the context of win_size
-        # 初始化算术编码器
-        if (self.compression_alg == 'ArithmeticCoding')or(self.compression_alg =='both'):
-            self.AC_file_name = compressed_file_name+'_AC.txt'
-            file_out = open(self.AC_file_name, 'wb')
-            bitout = BitOutputStream(file_out)
-            self.AC_encoder = ArithmeticEncoder(32, bitout)
         
-        if batched_encode:
-            bsz = self.model.params.max_batch_size
-        else:
-            bsz = 1
-        ranks_list = []
-        probs_tok_list = []
-
         n_runs = tokens_full.size-win_size_enc+1
         
         if not with_context_start:
             tokens_encoded = tokens_full
+            starter_tokens = None
+        else:
+            tokens_encoded = tokens_full[win_size:win_size+n_runs]
+            starter_tokens = tokens_full[:win_size]
+        
+        self.N_T = tokens_encoded.size
 
+        # 初始化算术编码器
+        if (self.compression_alg == 'ArithmeticCoding')or(self.compression_alg =='both'):
+            # self.AC_file_name = compressed_file_name+'_AC.txt'
+            self.AC_file_name = build_compressed_pkl_name(self.compressed_file_name, out_dir, win_len=getattr(self, 'win_size', 0), N_T=getattr(self, 'N_T', 0), prefix=os.path.splitext(os.path.basename(self.compressed_file_name))[0])
+            file_out = open(self.AC_file_name, 'wb')
+            bitout = BitOutputStream(file_out)
+            self.AC_encoder = ArithmeticEncoder(32, bitout)
+        
+        ranks_list = []
+        probs_tok_list = []
+
+        if not with_context_start:
             # Running LLM for the starter tokens
             for t_ind in range(1,win_size_enc):
                 if self.use_hf:
@@ -109,8 +111,12 @@ class LLMzip_encode:
                 probs_tok_list += [probs_tok]
             starter_tokens = None
         else:
-            tokens_encoded = tokens_full[win_size:win_size+n_runs] 
-            starter_tokens = tokens_full[:win_size] 
+            tokens_encoded = tokens_full[win_size:win_size+n_runs]
+            starter_tokens = tokens_full[:win_size]
+        if batched_encode:
+            bsz = self.model.params.max_batch_size
+        else:
+            bsz = 1
 
         n_batches = np.ceil(n_runs/bsz).astype(int)
 
@@ -127,14 +133,13 @@ class LLMzip_encode:
             # if (b_ind*bsz*100/n_batches)%10 == 0:
             #     print(f'Encoder: Completed {int(b_ind*bsz*100/n_batches)} %')
             
-        ranks_full = np.concatenate(ranks_list,0).squeeze() 
-        probs_tok_full = np.concatenate(probs_tok_list,0).squeeze() 
-         
+        ranks_full = np.concatenate(ranks_list,0).squeeze()
+        probs_tok_full = np.concatenate(probs_tok_list,0).squeeze()
+        
         if (self.compression_alg == 'ArithmeticCoding')or(self.compression_alg =='both'):
             self.AC_encoder.finish()
             bitout.close() # 写入AC.txt文件里面
             file_out.close()
-            
             
         if (self.compression_alg == 'RankZip')or(self.compression_alg =='both'):
             str_ranks = get_str_array(ranks_full)
@@ -145,8 +150,8 @@ class LLMzip_encode:
 
             with open(self.RZ_file_name,'wb') as file_out_zip:
                 file_out_zip.write(ranks_comp)
-                
-        self.compute_compression_ratio(tokens_encoded,probs_tok_full,starter_tokens)
+        print(f"[LLMzip] Saved compressed binary (pickled) to: {self.AC_file_name}")
+        self.compute_compression_ration_pkl(tokens_encoded,probs_tok_full,starter_tokens)
         
     
     def compute_compression_ratio(self,tokens_encoded,probs_tok,starter_tokens):
@@ -193,6 +198,55 @@ class LLMzip_encode:
         with open(self.compressed_file_name+'_metrics.json', 'w') as file_metrics: 
             json.dump(df_out, file_metrics)
 
+    def compute_compression_ration_pkl(self, tokens_encoded, probs_tok, starter_tokens):
+        text_encoded = self.tokenizer.decode(tokens_encoded.squeeze().tolist())
+        N_T = tokens_encoded.size  # 原文经过编码器得到的embedding长度
+        N_C = len(text_encoded)    # 原文本体的长度（字符数）
+        df_out = {}
+        df_out['$N_C$'] = [N_C]
+        df_out['$N_T$'] = [N_T]
+        df_out['$H_{ub}$'] = [str(np.sum(-1*np.log2(probs_tok))/N_C)]
+        if (self.compression_alg == 'RankZip') or (self.compression_alg == 'both'):
+            with open(self.RZ_file_name, 'rb') as file_RZ:
+                ranks_compressed_bytes = file_RZ.read()
+            rho_RZ = len(ranks_compressed_bytes) * 8 / N_C
+            print(f'Compression Ratio for RankZip :  {rho_RZ} bits/char')
+            df_out['Llama+zlib compressed file size'] = [len(ranks_compressed_bytes)*8]
+            df_out['$\rho_{LLaMa+Zlib}$'] = [rho_RZ]
+        df_out['$\rho_{TbyT}$'] = [str(np.sum(np.ceil(-1*np.log2(probs_tok))) / N_C)]
+
+        if (self.compression_alg == 'ArithmeticCoding') or (self.compression_alg == 'both'):
+            # 读取由 BitOutputStream 产生的原始二进制文件内容
+            # self.AC_file_name 在 encode_from_tokens 时已被创建并写入
+            with open(self.AC_file_name, 'rb') as file_in:
+                file_bytes = file_in.read()
+            # 使用现有的函数来计算 bit-array
+            bitin = BitInputStream(io.BytesIO(file_bytes))
+            compressed_bits = read_bitstream(bitin)
+            rho_AC = compressed_bits.size / N_C
+            print(f'Compression Ratio for Arithmetic Coding :  {rho_AC} bits/char')
+
+            df_out['Llama+AC compressed file size'] = [compressed_bits.size]
+            df_out['$\rho_{LLaMa+AC}$'] = [rho_AC]
+
+            # # 压缩的字节流保存为 .pkl，并把 win/N_T 放入文件名
+            # try:
+            #     # build_compressed_pkl_name(input_filepath, out_dir, win_len, N_T, prefix=None)
+            #     # 我们把 prefix 设为 self.compressed_file_name 保持与原来名称关联
+                
+            #     # out_dir 设置为 None -> 会使用当前路径的 basename
+            #     pkl_name = build_compressed_pkl_name(self.compressed_file_name, out_dir='.', win_len=getattr(self, 'win_size', 0), N_T=getattr(self, 'N_T', N_T), prefix=os.path.splitext(os.path.basename(self.compressed_file_name))[0])
+            # except Exception:
+            #     # 兼容兜底：构造文件名
+            #     pkl_name = f"{self.compressed_file_name}_win{getattr(self,'win_size',0)}_NT{getattr(self,'N_T',N_T)}.pkl"
+
+            # # 保存原始 bytes（不是 numpy bits），以便 decode 时直接回放原始 bit-stream
+            # with open(pkl_name, 'wb') as pf:
+            #     pickle.dump(file_bytes, pf)
+
+        print("Compression summary (df_out):")
+        print(df_out)
+
 
 class LLMzip_decode:
     def __init__(self, model: Transformer, tokenizer: Tokenizer, use_hf: bool):
@@ -215,9 +269,19 @@ class LLMzip_decode:
             self.raw_decoded_tokens = []
             self.all_probability_distributions = []
 
+        # 检查是否为 .pkl（若是则加载 bytes 并用 BytesIO 包装）
+        if isinstance(compressed_file_name, str) and compressed_file_name.endswith('.pkl'):
+            # load pickled bytes
+            with open(compressed_file_name, 'rb') as pf:
+                file_bytes = pickle.load(pf)
+            bitin = BitInputStream(io.BytesIO(file_bytes))
+        else:
+            # 兼容老流程：直接以二进制流打开（比如 'LLMzip_AC.txt'）
+            file_in = open(compressed_file_name, 'rb')
+            bitin = BitInputStream(file_in)
 
-        file_in = open(compressed_file_name, 'rb')
-        bitin = BitInputStream(file_in)
+        # file_in = open(compressed_file_name, 'rb')
+        # bitin = BitInputStream(file_in)
         dec = ArithmeticDecoder(32, bitin)
         
         bsz = 1    # predicts 1 token at a time
@@ -284,8 +348,8 @@ class LLMzip_decode:
             if cur_pos >= win_size:
                 prev_pos += 1
 
-                if (prev_pos*100/(total_length-win_size))%10 == 0:
-                    print(f'Decoder: Completed {int(prev_pos*100/(total_length-win_size))} %')
+                # if (prev_pos*100/(total_length-win_size))%10 == 0:
+                #     print(f'Decoder: Completed {int(prev_pos*100/(total_length-win_size))} %')
         
         # ---- 去掉 BOS <s> ----
         decoded_ids = tokens.tolist()[0]
@@ -432,8 +496,8 @@ class LLMzip_decode:
             if cur_pos >= win_size:
                 prev_pos += 1
 
-                if (prev_pos*100/(total_length-win_size))%10 == 0:
-                    print(f'Decoder: Completed {int(prev_pos*100/(total_length-win_size))} %')
+                # if (prev_pos*100/(total_length-win_size))%10 == 0:
+                #     print(f'Decoder: Completed {int(prev_pos*100/(total_length-win_size))} %')
 
         decoded_text = self.tokenizer.decode(tokens.tolist()[0])
 
