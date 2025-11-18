@@ -11,3 +11,8 @@ run_json.sh
 LLMzip_run_json.py
 compression_results.json
 __pycache__/
+LLMzip_json_compression_10epoch/
+LLMzip_json_compression_5epoch/
+compression_results_5epoch.json
+compression_results_10epoch.json
+epoch10.txt

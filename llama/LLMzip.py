@@ -151,8 +151,8 @@ class LLMzip_encode:
             with open(self.RZ_file_name,'wb') as file_out_zip:
                 file_out_zip.write(ranks_comp)
         print(f"[LLMzip] Saved compressed binary (pickled) to: {self.AC_file_name}")
-        self.compute_compression_ration_pkl(tokens_encoded,probs_tok_full,starter_tokens)
-        
+        N_C, N_T, Bits = self.compute_compression_ration_pkl(tokens_encoded,probs_tok_full,starter_tokens)
+        return N_C, N_T, Bits, self.AC_file_name
     
     def compute_compression_ratio(self,tokens_encoded,probs_tok,starter_tokens):
         text_encoded = self.tokenizer.decode(tokens_encoded.squeeze().tolist())
@@ -246,6 +246,7 @@ class LLMzip_encode:
 
         print("Compression summary (df_out):")
         print(df_out)
+        return N_C, N_T, compressed_bits.size
 
 
 class LLMzip_decode:
